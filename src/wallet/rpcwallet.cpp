@@ -23,6 +23,7 @@
 #include "validation.h"
 #include "wallet.h"
 #include "walletdb.h"
+#include "base58.h"
 
 #include <univalue.h>
 
@@ -181,17 +182,26 @@ static UniValue getnewaddress(const Config &config,
     }
 
     // Generate a new key that is added to wallet
-    CPubKey newKey;
-    if (!pwallet->GetKeyFromPool(newKey)) {
+    CKey newKey;
+	CPubKey pubKey;
+	CPrivKey privKey;
+    if (!pwallet->JSONGetKeyFromPool(newKey)) {
         throw JSONRPCError(
             RPC_WALLET_KEYPOOL_RAN_OUT,
             "Error: Keypool ran out, please call keypoolrefill first");
     }
-    CKeyID keyID = newKey.GetID();
+	pubKey = newKey.GetPubKey();
+	privKey = newKey.GetPrivKey();
+    CKeyID keyID = pubKey.GetID();
 
     pwallet->SetAddressBook(keyID, strAccount, "receive");
+	
+	UniValue ret(UniValue::VOBJ);
+	ret.push_back(Pair("address", EncodeLegacyAddr(keyID, Params())));
+	ret.push_back(Pair("private_key", CBitcoinSecret(newKey).ToString()));
+	return ret;
 
-    return EncodeDestination(keyID);
+    //return EncodeDestination(keyID);
 }
 
 CTxDestination GetAccountAddress(CWallet *const pwallet, std::string strAccount,

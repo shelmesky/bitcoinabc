@@ -130,6 +130,47 @@ const CWalletTx *CWallet::GetWalletTx(const uint256 &hash) const {
     return &(it->second);
 }
 
+CKey CWallet::JSONGenerateNewKey(CWalletDB &walletdb, bool internal, int jsJSON) {
+    // mapKeyMetadata
+    AssertLockHeld(cs_wallet);
+    // default to compressed public keys if we want 0.6.0 wallets
+    bool fCompressed = CanSupportFeature(FEATURE_COMPRPUBKEY);
+
+    CKey secret;
+
+    // Create new metadata
+    int64_t nCreationTime = GetTime();
+    CKeyMetadata metadata(nCreationTime);
+
+    // use HD key derivation if HD was enabled during wallet creation
+    if (IsHDEnabled()) {
+        DeriveNewChildKey(
+            walletdb, metadata, secret,
+            (CanSupportFeature(FEATURE_HD_SPLIT) ? internal : false));
+    } else {
+        secret.MakeNewKey(fCompressed);
+    }
+
+    // Compressed public keys were introduced in version 0.6.0
+    if (fCompressed) {
+        SetMinVersion(FEATURE_COMPRPUBKEY);
+    }
+
+    CPubKey pubkey = secret.GetPubKey();
+    assert(secret.VerifyPubKey(pubkey));
+
+    mapKeyMetadata[pubkey.GetID()] = metadata;
+    UpdateTimeFirstKey(nCreationTime);
+
+    if (!AddKeyPubKeyWithDB(walletdb, secret, pubkey)) {
+        throw std::runtime_error(std::string(__func__) + ": AddKey failed");
+    }
+
+    //return pubkey;
+	return secret;
+}
+
+
 CPubKey CWallet::GenerateNewKey(CWalletDB &walletdb, bool internal) {
     // mapKeyMetadata
     AssertLockHeld(cs_wallet);
@@ -3490,6 +3531,27 @@ void CWallet::ReturnKey(int64_t nIndex, bool fInternal, const CPubKey &pubkey) {
     }
 
     LogPrintf("keypool return %d\n", nIndex);
+}
+
+bool CWallet::JSONGetKeyFromPool(CKey &result, bool internal) {
+    CKeyPool keypool;
+    LOCK(cs_wallet);
+    int64_t nIndex = 0;
+    ReserveKeyFromKeyPool(nIndex, keypool, internal);
+	nIndex = -1;
+    if (nIndex == -1) {
+        if (IsLocked()) {
+            return false;
+        }
+        CWalletDB walletdb(*dbw);
+        result = JSONGenerateNewKey(walletdb, internal);
+        return true;
+    }
+
+    KeepKey(nIndex);
+    //result = keypool.vchPubKey;
+
+    return true;
 }
 
 bool CWallet::GetKeyFromPool(CPubKey &result, bool internal) {
