@@ -940,8 +940,10 @@ static UniValue getbalance(const Config &config,
         filter = filter | ISMINE_WATCH_ONLY;
     }
 
-    return ValueFromAmount(
-        pwallet->GetLegacyBalance(filter, nMinDepth, account));
+    //return ValueFromAmount(
+    //    pwallet->GetLegacyBalance(filter, nMinDepth, account));
+	
+	return ValueFromAmount(pwallet->JSONGetBalance(*account));
 }
 
 static UniValue getunconfirmedbalance(const Config &config,
